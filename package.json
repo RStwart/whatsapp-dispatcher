@@ -1,0 +1,14 @@
+{
+  "name": "disparador-wpp",
+  "version": "1.0.0",
+  "description": "Disparador de mensagens WhatsApp via lista de clientes CSV",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "whatsapp-web.js": "^1.26.0",
+    "qrcode-terminal": "^0.12.0",
+    "csv-parse": "^5.5.6"
+  }
+}
