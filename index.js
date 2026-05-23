@@ -122,6 +122,77 @@ function normalizarTelefone(telefone) {
   return `${numero}@c.us`;
 }
 
+/**
+ * Detecta se o CSV está no formato esperado (Nome, Telefone com vírgula).
+ * Se não estiver, identifica automaticamente as colunas e reescreve o arquivo.
+ */
+function normalizarCSV(caminho) {
+  if (!fs.existsSync(caminho)) return; // lerClientes vai tratar o erro
+
+  const conteudo = fs.readFileSync(caminho, 'utf8').trim();
+  const linhas = conteudo.split(/\r?\n/).filter((l) => l.trim() !== '');
+
+  if (linhas.length === 0) return;
+
+  // Detecta delimitador: tab ou vírgula
+  const delimitador = linhas[0].includes('\t') ? '\t' : ',';
+
+  const colunas = linhas[0].split(delimitador).map((c) => c.trim().replace(/^"|"$/g, ''));
+
+  // Já está no formato correto?
+  if (colunas[0] === 'Nome' && colunas[1] === 'Telefone' && delimitador === ',') {
+    return;
+  }
+
+  console.log('[INFO] CSV em formato diferente detectado. Normalizando...');
+
+  // Heurística: se a primeira linha contém campo sem dígitos, é cabeçalho
+  const primeiraLinhaEhCabecalho = colunas.some((c) => /^[^\d]+$/.test(c));
+  const inicio = primeiraLinhaEhCabecalho ? 1 : 0;
+  const dadosLinhas = linhas.slice(inicio);
+
+  if (dadosLinhas.length === 0) {
+    console.warn('[AVISO] CSV sem dados após o cabeçalho. Nada a normalizar.');
+    return;
+  }
+
+  // Usa a primeira linha de dados para detectar qual coluna é o telefone
+  const amostra = dadosLinhas[0].split(delimitador).map((c) => c.trim().replace(/^"|"$/g, ''));
+
+  function pareceTelefone(valor) {
+    return /^[\d\s\-\(\)\+]+$/.test(valor) && valor.replace(/\D/g, '').length >= 8;
+  }
+
+  let idxNome = -1;
+  let idxTelefone = -1;
+
+  for (let i = 0; i < amostra.length; i++) {
+    if (pareceTelefone(amostra[i])) {
+      idxTelefone = i;
+    } else if (idxNome === -1) {
+      idxNome = i;
+    }
+  }
+
+  // Fallback: assume col 0 = nome, col 1 = telefone
+  if (idxNome === -1) idxNome = 0;
+  if (idxTelefone === -1) idxTelefone = 1;
+
+  // Reconstrói o CSV no formato correto
+  const novasLinhas = ['Nome,Telefone'];
+  for (const linha of dadosLinhas) {
+    const partes = linha.split(delimitador).map((c) => c.trim().replace(/^"|"$/g, ''));
+    const nome = partes[idxNome] || '';
+    const tel = partes[idxTelefone] || '';
+    if (!nome && !tel) continue;
+    const nomeFmt = nome.includes(',') ? `"${nome}"` : nome;
+    novasLinhas.push(`${nomeFmt},${tel}`);
+  }
+
+  fs.writeFileSync(caminho, novasLinhas.join('\n'), 'utf8');
+  console.log(`[INFO] CSV normalizado com sucesso! ${dadosLinhas.length} registro(s) ajustado(s) → formato Nome,Telefone.\n`);
+}
+
 /** Lê e parseia o CSV de clientes */
 function lerClientes(caminho) {
   if (!fs.existsSync(caminho)) {
@@ -182,6 +253,7 @@ client.on('auth_failure', (msg) => {
 client.on('ready', async () => {
   console.log('[INFO] WhatsApp Web conectado e pronto!\n');
 
+  normalizarCSV(ARQUIVO_CSV);
   const clientes = lerClientes(ARQUIVO_CSV);
   console.log(`[INFO] ${clientes.length} cliente(s) encontrado(s) no CSV.\n`);
 
